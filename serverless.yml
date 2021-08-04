@@ -1,145 +1,28 @@
-service: real-estate-agent-app
+service: lambaa-demo
 useDotenv: true
 
 provider:
     name: aws
     runtime: nodejs14.x
     region: us-west-2
-    timeout: 29
-    logRetentionInDays: 90
     lambdaHashingVersion: "20201221"
-    stackTags: &tags
-        repository: real-estate-agent-app
-        serverlessFramework: true
-    tags: *tags
-    tracing:
-        apiGateway: true
-        lambda: true
 
-    logs:
-        restApi:
-            format: '{ "requestId":"$context.requestId", "ip": "$context.identity.sourceIp", "caller":"$context.identity.caller", "user":"$context.identity.user","requestTime":"$context.requestTime", "httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath", "status":"$context.status","protocol":"$context.protocol", "responseLength":"$context.responseLength", "sourceIp" : "$context.identity.sourceIp", "userAgent" : "$context.identity.userAgent" }'
-    environment:
-        NODE_ENV: production
-        ENVIRONMENT: ${opt:stage}
-        REPORTS_TABLE_NAME: ${opt:stage}-real-estate-agent-app-reports
-        RENT_PROJECTION_API_BASE_URL: ${self:custom.config.endpoints.rentProjectionApi.baseUrl}
-        RENT_PROJECTION_API_AUDIENCE: ${self:custom.config.endpoints.rentProjectionApi.audience}
-        IDP_CLIENT_ID: ${self:custom.config.idp.clientId}
-        IDP_AUDIENCE: ${self:custom.config.idp.audience}
-        IDP_BASE_URL: ${self:custom.config.idp.baseUrl}
-        SENTRY_DSN: ${self:custom.config.sentry.dsn}
-        S3_BUCKET_NAME: real-estate-agent-app-${opt:stage}
-    iam:
-        role:
-            statements:
-                - Effect: Allow
-                  Action:
-                      - secretsmanager:GetSecretValue
-                  Resource:
-                      {
-                          "Fn::Join":
-                              [
-                                  "",
-                                  [
-                                      "arn:aws:secretsmanager:${self:provider.region}:",
-                                      { "Ref": "AWS::AccountId" },
-                                      ":secret:real-estate-agent-app/*",
-                                  ],
-                              ],
-                      }
-                - Effect: Allow
-                  Action:
-                      - dynamodb:DescribeTable
-                      - dynamodb:Query
-                      - dynamodb:Scan
-                      - dynamodb:GetItem
-                      - dynamodb:PutItem
-                      - dynamodb:DeleteItem
-                  Resource:
-                      - "Fn::GetAtt": [Reports, Arn]
-                      - Fn::Join:
-                            - "/"
-                            - - "Fn::GetAtt": [Reports, Arn]
-                              - "index/*"
-                - Effect: Allow
-                  Action:
-                      - s3:GetObject
-                  Resource: arn:aws:s3:::${self:provider.environment.S3_BUCKET_NAME}/*
-
-functions:
-    handler:
-        handler: src/index.handler
-        events:
-            - http:
-                  path: v1/ping
-                  method: GET
-                  cors: true
-            - http:
-                  path: v1/reports
-                  method: ANY
-                  cors: true
-            - http:
-                  path: v1/reports/{reportId}
-                  method: ANY
-                  cors: true
-            - http:
-                  path: v1/markets
-                  method: ANY
-                  cors: true
-
-    autocomplete:
-        handler: src/index.handler
-        events:
-            - http:
-                  path: v1/autocomplete/suggestions
-                  method: GET
-                  cors: true
+# functions:
+#     lambaa-router:
+#         handler: src/index.handler
+#         events:
+#             - http:
+#                   path: ping
+#                   method: ANY
+#                   cors: true
 
 plugins:
     - serverless-webpack
-    - serverless-offline
 
 custom:
-    config: ${file(config/${self:custom.env}.yml)}
-    env: ${self:custom.envs.${opt:stage}, 'dev'}
-    envs:
-        dev: dev
-        stage: stage
-        prod: prod
-    deploymentBucket:
-        versioning: true
     webpack:
         webpackConfig: "./webpack.config.js"
         includeModules: true
     serverless-offline:
         httpPort: 3001
         useChildProcesses: true
-
-resources:
-    Resources:
-        Reports:
-            Type: AWS::DynamoDB::Table
-            Properties:
-                TableName: ${self:provider.environment.REPORTS_TABLE_NAME}
-                AttributeDefinitions:
-                    - AttributeName: reportId
-                      AttributeType: S
-                    - AttributeName: userId
-                      AttributeType: S
-                KeySchema:
-                    - AttributeName: reportId
-                      KeyType: HASH
-                BillingMode: PAY_PER_REQUEST
-                GlobalSecondaryIndexes:
-                    - IndexName: userIdIndex
-                      KeySchema:
-                          - AttributeName: userId
-                            KeyType: HASH
-                      Projection:
-                          ProjectionType: ALL
-                Tags: &cf_tags
-                    - Key: repository
-                      Value: real-estate-agent-app
-                    - Key: serverlessframework
-                      Value: true
